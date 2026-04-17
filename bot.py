@@ -60,11 +60,14 @@ async def safe_edit_text(query, text, **kwargs):
 
 # ─── Tipo de cambio live ──────────────────────────────────────────────────────
 
-async def get_tc_usd() -> float | None:
+async def get_tc(currency: str) -> float | None:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get("https://open.er-api.com/v6/latest/USD")
-            return round(r.json()["rates"]["MXN"], 2)
+            r = await client.get(f"https://open.er-api.com/v6/latest/{currency}")
+            data = r.json()
+            if data.get("result") != "success":
+                return None
+            return round(data["rates"]["MXN"], 4)
     except Exception:
         return None
 
@@ -90,7 +93,7 @@ PROPINA (campo "propina"):
   Busca: Propina, Tip, Gratuity, Gratuidad, Servicio, Service Charge, Service Fee.
   Captura solo el monto cobrado, NO el total. Si es sugerida pero no cobrada, pon 0.
 
-MONEDA: detecta MXN, USD, EUR. Si no se ve claramente, asume MXN.
+MONEDA: detecta el código ISO de la moneda. Principales: MXN, USD, EUR, GBP, BRL, CNY, JPY, CAD, AUD, CHF, COP, ARS, CLP, PEN, GTQ, HNL, CRC, DOP, BOB, PYG, UYU. Si no se ve claramente, asume MXN.
 
 Responde ÚNICAMENTE con este JSON exacto:
 {
@@ -232,7 +235,7 @@ async def ask_for_tc(chat_id, context: ContextTypes.DEFAULT_TYPE):
     t = context.user_data['temp_ticket']
     context.user_data['state'] = 'WAITING_TC'
 
-    tc_live = await get_tc_usd()
+    tc_live = await get_tc(t['moneda'])
     if tc_live:
         base = round(tc_live * 2) / 2
         opciones = sorted({round(base - 0.5, 2), round(base, 2),
