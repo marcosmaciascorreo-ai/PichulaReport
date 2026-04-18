@@ -33,6 +33,18 @@ MESES_ES = {
 
 # ─── Utilidades ───────────────────────────────────────────────────────────────
 
+def find_duplicate(tickets: list, temp: dict) -> dict | None:
+    fecha = temp.get('fecha', '')
+    total = safe_float(temp.get('total'))
+    proveedor = (temp.get('proveedor') or '').strip().lower()
+    for t in tickets:
+        mismo_dia = t.get('fecha', '') == fecha
+        mismo_monto = abs(safe_float(t.get('total')) - total) < 0.01
+        mismo_lugar = t.get('proveedor', '').strip().lower() == proveedor
+        if mismo_dia and mismo_monto and mismo_lugar:
+            return t
+    return None
+
 def safe_float(val, default=0.0):
     try:
         return float(val) if val is not None else default
@@ -481,6 +493,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=chat_id,
                 text="⚠️ El *total es 0*. Toca ✏️ Total para corregirlo.", parse_mode='Markdown')
             return
+        dup = find_duplicate(context.user_data.get('tickets', []), t)
+        if dup:
+            kb = [
+                [InlineKeyboardButton("🗑️ Sí es duplicado, descartar", callback_data="discard_ticket")],
+                [InlineKeyboardButton("✅ No es duplicado, continuar", callback_data="force_confirm_ticket")]
+            ]
+            await safe_edit_text(
+                query,
+                f"⚠️ *Posible ticket duplicado*\n\n"
+                f"Ya existe uno similar:\n"
+                f"#{dup['id']} | {dup['fecha']} | {dup['proveedor']} | ${dup['monto_mxn']:,.2f} MXN\n\n"
+                f"¿Qué deseas hacer?",
+                reply_markup=InlineKeyboardMarkup(kb),
+                parse_mode='Markdown'
+            )
+            return
+        await safe_edit_text(query, "✅ Datos confirmados. Selecciona la categoría...")
+        await ask_for_category(chat_id, context)
+        return
+
+    if data == "discard_ticket":
+        context.user_data['temp_ticket'] = {}
+        context.user_data['state'] = 'TICKET_DONE'
+        await safe_edit_text(query, "🗑️ Ticket descartado. Manda el siguiente o usa Ver Resumen.")
+        return
+
+    if data == "force_confirm_ticket":
         await safe_edit_text(query, "✅ Datos confirmados. Selecciona la categoría...")
         await ask_for_category(chat_id, context)
         return
